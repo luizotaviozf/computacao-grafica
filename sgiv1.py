@@ -15,6 +15,7 @@ class interfaceMain(tk.Tk):
         frameCanvas = tk.Frame(self, bg="white")
         frameCanvas.pack(side="right", fill="both", expand=True)
 
+
         btnAddObj = tk.Button(frameMenu, text="Adicionar Objeto", command=self.add_object)
         btnAddObj.pack(pady=10)
 
@@ -24,6 +25,25 @@ class interfaceMain(tk.Tk):
         self.canvas = tk.Canvas(frameCanvas, bg="white")
         self.canvas.pack(fill="both", expand=True)
 
+        self.window = {
+            "xmin": 0,
+            "ymin": 0,
+            "xmax": 600,
+            "ymax": 600
+        }
+
+        # Windows/Mac
+        self.canvas.bind("<MouseWheel>", self.on_zoom)
+
+        # Linux
+        self.canvas.bind("<Button-4>", self.on_zoom)
+        self.canvas.bind("<Button-5>", self.on_zoom)
+
+        self.bind("<Left>", lambda e: self.pan(-10, 0))
+        self.bind("<Right>", lambda e: self.pan(10, 0))
+        self.bind("<Up>", lambda e: self.pan(0, 10))
+        self.bind("<Down>", lambda e: self.pan(0, -10))
+
         frame_lista = tk.Frame(frameMenu)
         frame_lista.pack(pady=5,padx=5)
         scroll = tk.Scrollbar(frame_lista)
@@ -31,6 +51,111 @@ class interfaceMain(tk.Tk):
         self.listbox = tk.Listbox(frame_lista, yscrollcommand=scroll.set)
         self.listbox.pack(fill="both")
         scroll.config(command=self.listbox.yview)
+        tk.Label(
+            frameMenu,
+            text="Panning: setas do teclado\nZoom: scroll do mouse",
+            bg="lightgray",
+            justify="left"
+        ).pack(pady=10)
+        self.label_window = tk.Label(
+            frameMenu,
+            text="",
+            bg="lightgray",
+            justify="left",
+            font=("Arial", 9)
+        )
+        self.label_window.pack(pady=5)
+        self.after(100, self.desenhar_objetos)
+        self.after(100, self.atualizar_label_window)
+        self.focus_set()
+
+    def atualizar_label_window(self):
+        w = self.window
+        texto = (
+            f"Window:\n"
+            f"xmin: {w['xmin']:.2f}\n"
+            f"ymin: {w['ymin']:.2f}\n"
+            f"xmax: {w['xmax']:.2f}\n"
+            f"ymax: {w['ymax']:.2f}"
+        )
+        self.label_window.config(text=texto)
+
+    def pan(self, dx, dy):
+        self.window["xmin"] += dx
+        self.window["xmax"] += dx
+        self.window["ymin"] += dy
+        self.window["ymax"] += dy
+
+        self.desenhar_objetos()
+        self.atualizar_label_window()
+
+    def zoom(self, fator):
+        w = self.window
+
+        cx = (w["xmin"] + w["xmax"]) / 2
+        cy = (w["ymin"] + w["ymax"]) / 2
+
+        largura = (w["xmax"] - w["xmin"]) * fator
+        altura = (w["ymax"] - w["ymin"]) * fator
+
+        self.window["xmin"] = cx - largura / 2
+        self.window["xmax"] = cx + largura / 2
+        self.window["ymin"] = cy - altura / 2
+        self.window["ymax"] = cy + altura / 2
+
+        self.desenhar_objetos()
+        self.atualizar_label_window()
+
+    def on_zoom(self, event):
+        # Windows / Mac
+        if hasattr(event, "delta") and event.delta != 0:
+            if event.delta > 0:
+                self.zoom(0.9)
+            else:
+                self.zoom(1.1)
+
+        # Linux scroll up
+        elif event.num == 4:
+            self.zoom(0.9)
+
+        # Linux scroll down
+        elif event.num == 5:
+            self.zoom(1.1)
+
+    def world_to_viewport(self, x, y):
+        w = self.window
+
+        self.update_idletasks()  # garante tamanho correto
+
+        vw = self.canvas.winfo_width()
+        vh = self.canvas.winfo_height()
+
+        xv = (x - w["xmin"]) / (w["xmax"] - w["xmin"]) * vw
+        yv = (y - w["ymin"]) / (w["ymax"] - w["ymin"]) * vh
+
+        yv = vh - yv  # inverte eixo Y
+
+        return xv, yv
+
+    def desenhar_objetos(self):
+        self.canvas.delete("all")
+
+        for obj in self.display_file:
+
+            if obj.tipo == "ponto":
+                x, y = self.world_to_viewport(*obj.pontos[0])
+                r = 3
+                self.canvas.create_oval(x - r, y - r, x + r, y + r, fill="black")
+
+            elif obj.tipo == "reta":
+                (x1, y1), (x2, y2) = obj.pontos
+                x1, y1 = self.world_to_viewport(x1, y1)
+                x2, y2 = self.world_to_viewport(x2, y2)
+                self.canvas.create_line(x1, y1, x2, y2, fill="blue")
+
+            elif obj.tipo == "wireframe":
+                pontos = [self.world_to_viewport(x, y) for x, y in obj.pontos]
+                self.canvas.create_polygon(pontos, outline="green", fill="")
 
     def add_object(self):
         interfaceAddObj(self, "Adicionar Objeto", 400, 550)
@@ -42,6 +167,7 @@ class interfaceMain(tk.Tk):
             self.listbox.delete(index)
             self.display_file.pop(index)
         self.atualizar_listbox()
+        self.desenhar_objetos()
 
     def atualizar_listbox(self):
         self.listbox.delete(0, tk.END)
@@ -135,6 +261,7 @@ class interfaceAddObj(tk.Toplevel):
         novo_objeto = objeto(nome, tipo, pontos)
         self.master.display_file.append(novo_objeto)
         self.master.atualizar_listbox()
+        self.master.desenhar_objetos()
         self.destroy()
 
 class objeto:
