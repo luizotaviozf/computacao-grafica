@@ -125,7 +125,7 @@ class interfaceMain(tk.Tk):
     def world_to_viewport(self, x, y):
         w = self.window
 
-        self.update_idletasks()  # garante tamanho correto
+        self.update_idletasks()
 
         vw = self.canvas.winfo_width()
         vh = self.canvas.winfo_height()
