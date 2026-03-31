@@ -51,12 +51,14 @@ class interfaceMain(tk.Tk):
         self.listbox = tk.Listbox(frame_lista, yscrollcommand=scroll.set)
         self.listbox.pack(fill="both")
         scroll.config(command=self.listbox.yview)
+        
         tk.Label(
             frameMenu,
             text="Panning: setas do teclado\nZoom: scroll do mouse",
             bg="lightgray",
             justify="left"
         ).pack(pady=10)
+
         self.label_window = tk.Label(
             frameMenu,
             text="",
@@ -65,6 +67,7 @@ class interfaceMain(tk.Tk):
             font=("Arial", 9)
         )
         self.label_window.pack(pady=5)
+        
         self.after(100, self.desenhar_objetos)
         self.after(100, self.atualizar_label_window)
         self.focus_set()
@@ -155,7 +158,10 @@ class interfaceMain(tk.Tk):
 
             elif obj.tipo == "wireframe":
                 pontos = [self.world_to_viewport(x, y) for x, y in obj.pontos]
-                self.canvas.create_polygon(pontos, outline="green", fill="")
+                for i in range(len(pontos)):
+                    x1, y1 = pontos[i]
+                    x2, y2 = pontos[(i + 1) % len(pontos)]
+                    self.canvas.create_line(x1, y1, x2, y2)
 
     def add_object(self):
         interfaceAddObj(self, "Adicionar Objeto", 400, 550)
@@ -255,7 +261,7 @@ class interfaceAddObj(tk.Toplevel):
         nome = self.entry_nome.get()
         tipo = self.tipo_var.get()
         pontos = self.pontos
-        if tipo == "wireframe" and len(self.pontos) < 3 or (tipo == "reta" and len(self.pontos) != 2) or (tipo == "ponto" and len(self.pontos) != 1):
+        if (tipo == "wireframe" and len(self.pontos) < 3) or (tipo == "reta" and len(self.pontos) != 2) or (tipo == "ponto" and len(self.pontos) != 1):
             messagebox.showerror("Erro", "O tipo do objeto não corresponde ao número de pontos")
             return
         novo_objeto = objeto(nome, tipo, pontos)
