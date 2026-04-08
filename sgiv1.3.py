@@ -32,7 +32,7 @@ class interfaceMain(tk.Tk):
             "ymin": 0,
             "xmax": 600,
             "ymax": 600,
-            "angulo": 0  # NOVO
+            "angulo": 0
         }
 
         # Windows/Mac
@@ -96,11 +96,9 @@ class interfaceMain(tk.Tk):
         self.label_window.config(text=texto)
 
     def pan(self, dx, dy):
-        import math
 
         ang = self.window["angulo"]
 
-        # rotaciona vetor de movimento
         dxr = dx * math.cos(ang) - dy * math.sin(ang)
         dyr = dx * math.sin(ang) + dy * math.cos(ang)
 
@@ -119,7 +117,6 @@ class interfaceMain(tk.Tk):
         return cx, cy
 
     def rotacionar_window(self, ang_graus):
-        import math
         self.window["angulo"] += math.radians(ang_graus)
 
         self.desenhar_objetos()
@@ -159,7 +156,6 @@ class interfaceMain(tk.Tk):
             self.zoom(1.1)
 
     def world_to_viewport(self, x, y):
-        import math
 
         w = self.window
 
@@ -167,27 +163,21 @@ class interfaceMain(tk.Tk):
         vw = self.canvas.winfo_width()
         vh = self.canvas.winfo_height()
 
-        # centro da window
         cx, cy = self.centro_window()
 
-        # 1. Translada para origem
         xt = x - cx
         yt = y - cy
 
-        # 2. Rotação inversa (mundo gira contrário)
         ang = -w["angulo"]
         xr = xt * math.cos(ang) - yt * math.sin(ang)
         yr = xt * math.sin(ang) + yt * math.cos(ang)
 
-        # 3. Volta
         xr += cx
         yr += cy
 
-        # 4. Normalização (PPC)
         xn = (xr - w["xmin"]) / (w["xmax"] - w["xmin"])
         yn = (yr - w["ymin"]) / (w["ymax"] - w["ymin"])
 
-        # 5. Viewport
         xv = xn * vw
         yv = (1 - yn) * vh
 
@@ -268,7 +258,6 @@ class interfaceMain(tk.Tk):
         ]
 
     def matriz_rotacao(self, theta):
-        import math
         cos = math.cos(theta)
         sin = math.sin(theta)
         return [
@@ -518,7 +507,6 @@ class interfaceTransformObj(tk.Toplevel):
 
     def add_rotacao(self):
         from tkinter import messagebox
-        import math
 
         try:
             ang = float(self.entry_ang.get())
