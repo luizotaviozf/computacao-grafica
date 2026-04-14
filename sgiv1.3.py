@@ -421,6 +421,7 @@ class interfaceTransformObj(tk.Toplevel):
         self.geometry("400x650")
         self.transformacoes = []
         self.rotacao_tipo = tk.StringVar(value="mundo")
+        self.objeto = self.master.get_objeto_selecionado()
 
         frame_translacao = tk.LabelFrame(self, text="Translação")
         frame_translacao.pack(fill="x", padx=10, pady=5)
@@ -496,11 +497,7 @@ class interfaceTransformObj(tk.Toplevel):
             messagebox.showerror("Erro", "Valores inválidos para sx ou sy")
             return
 
-        obj = self.master.get_objeto_selecionado()
-        if obj is None:
-            messagebox.showerror("Erro", "Selecione um objeto para escalar")
-            return
-        matriz = self.master.matriz_escala_centro(obj, sx, sy)
+        matriz = self.master.matriz_escala_centro(self.objeto, sx, sy)
 
         self.transformacoes.append(matriz)
         self.listbox.insert(tk.END, f"S({sx}, {sy})")
@@ -517,15 +514,12 @@ class interfaceTransformObj(tk.Toplevel):
         theta = math.radians(ang)
 
         tipo = self.rotacao_tipo.get()
-        obj = self.master.get_objeto_selecionado()
-        if obj is None:
-            messagebox.showerror("Erro", "Selecione um objeto para rotacionar")
-            return
+        
         if tipo == "mundo":
             matriz = self.master.matriz_rotacao(theta)
 
         elif tipo == "objeto":
-            matriz = self.master.matriz_rotacao_centro_obj(obj, theta)
+            matriz = self.master.matriz_rotacao_centro_obj(self.objeto, theta)
 
         elif tipo == "ponto":
             try:
@@ -543,15 +537,8 @@ class interfaceTransformObj(tk.Toplevel):
     def aplicar_transformacoes(self):
         from tkinter import messagebox
 
-        obj = self.master.get_objeto_selecionado()
-        if obj is None:
-            messagebox.showerror("Erro", "Selecione um objeto para transformar")
-            return
         if not self.transformacoes:
             messagebox.showerror("Erro", "Nenhuma transformação a ser aplicada")
-            return
-        if obj is None:
-            messagebox.showerror("Erro", "Selecione um objeto para transformar")
             return
 
         matriz_final = self.transformacoes[0]
@@ -559,7 +546,7 @@ class interfaceTransformObj(tk.Toplevel):
         for m in self.transformacoes[1:]:
             matriz_final = self.master.multiplica_matrizes(m, matriz_final)
 
-        self.master.aplicar_transformacao(obj, matriz_final)
+        self.master.aplicar_transformacao(self.objeto, matriz_final)
         self.master.desenhar_objetos()
 
         self.destroy()
