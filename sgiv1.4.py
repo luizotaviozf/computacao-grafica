@@ -24,6 +24,26 @@ class interfaceMain(tk.Tk):
         btnRemoveObj = tk.Button(frameMenu, text="Remover Objeto", command=self.remove_object)
         btnRemoveObj.pack()
 
+        self.clipping_var = tk.StringVar(value="cohen")
+
+        tk.Label(frameMenu, text="Clipping de Retas:", bg="lightgray").pack(pady=5)
+
+        tk.Radiobutton(
+            frameMenu,
+            text="Cohen-Sutherland",
+            variable=self.clipping_var,
+            value="cohen",
+            bg="lightgray"
+        ).pack(anchor="w")
+
+        tk.Radiobutton(
+            frameMenu,
+            text="Liang-Barsky",
+            variable=self.clipping_var,
+            value="liang",
+            bg="lightgray"
+        ).pack(anchor="w")
+
         self.canvas = tk.Canvas(frameCanvas, bg="white")
         self.canvas.pack(fill="both", expand=True)
 
@@ -34,6 +54,19 @@ class interfaceMain(tk.Tk):
             "ymax": 600,
             "angulo": 0
         }
+
+        self.viewport = {
+            "xmin": 50,
+            "ymin": 50,
+            "xmax": 550,
+            "ymax": 550
+        }
+
+        self.INSIDE = 0
+        self.LEFT = 1
+        self.RIGHT = 2
+        self.BOTTOM = 4
+        self.TOP = 8
 
         # Windows/Mac
         self.canvas.bind("<MouseWheel>", self.on_zoom)
@@ -76,9 +109,119 @@ class interfaceMain(tk.Tk):
         btnTransform = tk.Button(frameMenu, text="Transformar Objeto", command=self.transform_object)
         btnTransform.pack(pady=5)
 
+        tk.Button(frameMenu, text="Salvar .obj", command=self.salvar_obj).pack(pady=5)
+        tk.Button(frameMenu, text="Carregar .obj", command=self.carregar_obj).pack(pady=5)
+
         self.after(100, self.desenhar_objetos)
         self.after(100, self.atualizar_label_window)
         self.focus_set()
+
+    def salvar_obj(self):
+        from tkinter import filedialog
+        caminho = filedialog.asksaveasfilename(defaultextension=".obj")
+
+        if not caminho:
+            return
+
+        with open(caminho, "w") as f:
+            descritor = DescritorOBJ()
+
+            for obj in self.display_file:
+                f.write(descritor.descrever_objeto(obj) + "\n")
+
+    def carregar_obj(self):
+        from tkinter import filedialog
+
+        caminho = filedialog.askopenfilename(filetypes=[("OBJ", "*.obj")])
+        if not caminho:
+            return
+
+        self.display_file.clear()
+
+        with open(caminho, "r") as f:
+            linhas = f.readlines()
+
+        nome = None
+        pontos = []
+        tipo = "wireframe"
+        cor = "black"
+
+        tipo_atual = "wireframe"
+        cor_atual = "black"
+
+        for linha in linhas:
+            partes = linha.strip().split()
+            if not partes:
+                continue
+
+            # ---------------- COMENTÁRIOS ----------------
+            if partes[0] == "#":
+                linha_str = linha.strip()
+
+                if "tipo:" in linha_str:
+                    tipo_atual = linha_str.split("tipo:")[1].strip()
+
+                elif "cor:" in linha_str:
+                    cor_atual = linha_str.split("cor:")[1].strip()
+
+            # ---------------- NOVO OBJETO ----------------
+            elif partes[0] == "o":
+
+                # salva anterior
+                if nome and pontos:
+                    pontos_validos = pontos.copy()
+
+                    if tipo == "ponto":
+                        pontos_validos = pontos_validos[:1]
+
+                    elif tipo == "reta":
+                        if len(pontos_validos) >= 2:
+                            pontos_validos = pontos_validos[:2]
+                        else:
+                            pontos_validos = []
+
+
+                    elif tipo == "wireframe" or tipo == "fill":
+                        if len(pontos_validos) < 3:
+                            pontos_validos = []
+
+                    if pontos_validos:
+                        self.display_file.append(objeto(nome, tipo, pontos_validos, cor))
+
+                # inicia novo
+                nome = partes[1]
+                pontos = []
+                tipo = tipo_atual
+                cor = cor_atual
+
+            # ---------------- VÉRTICES ----------------
+            elif partes[0] == "v":
+                x = float(partes[1])
+                y = float(partes[2])
+                pontos.append((x, y))
+
+        # ---------------- ÚLTIMO OBJETO ----------------
+        if nome and pontos:
+            pontos_validos = pontos.copy()
+
+            if tipo == "ponto":
+                pontos_validos = pontos_validos[:1]
+
+            elif tipo == "reta":
+                if len(pontos_validos) >= 2:
+                    pontos_validos = pontos_validos[:2]
+                else:
+                    pontos_validos = []
+
+            elif tipo == "wireframe":
+                if len(pontos_validos) < 3:
+                    pontos_validos = []
+
+            if pontos_validos:
+                self.display_file.append(objeto(nome, tipo, pontos_validos, cor))
+
+        self.atualizar_listbox()
+        self.desenhar_objetos()
 
     def atualizar_label_window(self):
         w = self.window
@@ -158,6 +301,7 @@ class interfaceMain(tk.Tk):
     def world_to_viewport(self, x, y):
 
         w = self.window
+        vp = self.viewport
 
         self.update_idletasks()
         vw = self.canvas.winfo_width()
@@ -178,36 +322,135 @@ class interfaceMain(tk.Tk):
         xn = (xr - w["xmin"]) / (w["xmax"] - w["xmin"])
         yn = (yr - w["ymin"]) / (w["ymax"] - w["ymin"])
 
-        xv = xn * vw
-        yv = (1 - yn) * vh
+        xv = vp["xmin"] + xn * (vp["xmax"] - vp["xmin"])
+        yv = vp["ymax"] - yn * (vp["ymax"] - vp["ymin"])
 
         return xv, yv
 
     def desenhar_objetos(self):
         self.canvas.delete("all")
 
+        vp = self.viewport
+        self.canvas.create_rectangle(
+            vp["xmin"], vp["ymin"],
+            vp["xmax"], vp["ymax"],
+            outline="black", width=2
+        )
+
         for obj in self.display_file:
 
             if obj.tipo == "ponto":
-                x, y = self.world_to_viewport(*obj.pontos[0])
-                r = 3
-                self.canvas.create_oval(x - r, y - r, x + r, y + r, fill=obj.cor)
+                if obj.tipo == "ponto":
+                    x, y = obj.pontos[0]
+
+                    xw, yw = self.world_to_window_space(x, y)
+
+                    if not (self.window["xmin"] <= xw <= self.window["xmax"] and
+                            self.window["ymin"] <= yw <= self.window["ymax"]):
+                        continue
+
+                    xf, yf = self.window_to_world_space(xw, yw)
+
+                    xv, yv = self.world_to_viewport(xf, yf)
+                    r = 3
+                    self.canvas.create_oval(xv - r, yv - r, xv + r, yv + r, fill=obj.cor)
 
             elif obj.tipo == "reta":
+                if len(obj.pontos) < 2:
+                    continue
                 (x1, y1), (x2, y2) = obj.pontos
-                x1, y1 = self.world_to_viewport(x1, y1)
-                x2, y2 = self.world_to_viewport(x2, y2)
-                self.canvas.create_line(x1, y1, x2, y2, fill=obj.cor)
+
+                x1w, y1w = self.world_to_window_space(x1, y1)
+                x2w, y2w = self.world_to_window_space(x2, y2)
+
+                if self.clipping_var.get() == "cohen":
+                    resultado = self.clip_cohen_sutherland(x1w, y1w, x2w, y2w)
+                else:
+                    resultado = self.clip_liang_barsky(x1w, y1w, x2w, y2w)
+                if resultado is None:
+                    continue
+
+                x1c, y1c, x2c, y2c = resultado
+
+                x1f, y1f = self.window_to_world_space(x1c, y1c)
+                x2f, y2f = self.window_to_world_space(x2c, y2c)
+                x1v, y1v = self.world_to_viewport(x1f, y1f)
+                x2v, y2v = self.world_to_viewport(x2f, y2f)
+                self.canvas.create_line(x1v, y1v, x2v, y2v, fill=obj.cor)
+
 
             elif obj.tipo == "wireframe":
-                pontos = [self.world_to_viewport(x, y) for x, y in obj.pontos]
-                for i in range(len(pontos)):
-                    x1, y1 = pontos[i]
-                    x2, y2 = pontos[(i + 1) % len(pontos)]
-                    self.canvas.create_line(x1, y1, x2, y2, fill=obj.cor)
+                n = len(obj.pontos)
+                for i in range(n):
+                    (x1, y1) = obj.pontos[i]
+                    (x2, y2) = obj.pontos[(i + 1) % n]
+                    x1w, y1w = self.world_to_window_space(x1, y1)
+                    x2w, y2w = self.world_to_window_space(x2, y2)
+                    if self.clipping_var.get() == "cohen":
+                        resultado = self.clip_cohen_sutherland(x1w, y1w, x2w, y2w)
+                    else:
+                        resultado = self.clip_liang_barsky(x1w, y1w, x2w, y2w)
+                    if resultado is None:
+                        continue
+                    x1c, y1c, x2c, y2c = resultado
+                    x1f, y1f = self.window_to_world_space(x1c, y1c)
+                    x2f, y2f = self.window_to_world_space(x2c, y2c)
+                    x1v, y1v = self.world_to_viewport(x1f, y1f)
+                    x2v, y2v = self.world_to_viewport(x2f, y2f)
+                    self.canvas.create_line(x1v, y1v, x2v, y2v, fill=obj.cor)
+            elif obj.tipo == "fill":
+                pontos_w = [self.world_to_window_space(x, y) for x, y in obj.pontos]
+                pontos_clip = self.clip_polygon(pontos_w)
+
+                if len(pontos_clip) < 3:
+                    continue
+                pontos_mundo = [self.window_to_world_space(x, y) for x, y in pontos_clip]
+                pontos_vp = [self.world_to_viewport(x, y) for x, y in pontos_mundo]
+                self.canvas.create_polygon(
+                    pontos_vp,
+                    fill=obj.cor,
+                    outline=obj.cor
+                )
+
+    def world_to_window_space(self, x, y):
+        w = self.window
+
+        cx, cy = self.centro_window()
+
+        xt = x - cx
+        yt = y - cy
+
+        ang = -w["angulo"]
+
+        xr = xt * math.cos(ang) - yt * math.sin(ang)
+        yr = xt * math.sin(ang) + yt * math.cos(ang)
+
+        # volta
+        xr += cx
+        yr += cy
+
+        return xr, yr
+
+    def window_to_world_space(self, x, y):
+        w = self.window
+
+        cx, cy = self.centro_window()
+
+        xt = x - cx
+        yt = y - cy
+
+        ang = w["angulo"]  # agora positivo
+
+        xr = xt * math.cos(ang) - yt * math.sin(ang)
+        yr = xt * math.sin(ang) + yt * math.cos(ang)
+
+        xr += cx
+        yr += cy
+
+        return xr, yr
 
     def add_object(self):
-        interfaceAddObj(self, "Adicionar Objeto", 400, 550)
+        interfaceAddObj(self, "Adicionar Objeto", 400, 700)
 
     def remove_object(self):
         sel = self.listbox.curselection()
@@ -221,7 +464,7 @@ class interfaceMain(tk.Tk):
     def atualizar_listbox(self):
         self.listbox.delete(0, tk.END)
         for obj in self.display_file:
-            texto = f"{obj.nome} ({obj.tipo})"
+            texto = f"{obj.nome} ({obj.tipo}) [{obj.cor}]"
             self.listbox.insert(tk.END, texto)
 
     def get_objeto_selecionado(self):
@@ -313,6 +556,153 @@ class interfaceMain(tk.Tk):
 
         return self.multiplica_matrizes(T2, self.multiplica_matrizes(R, T1))
 
+    def compute_code(self, x, y):
+        w = self.window
+        code = self.INSIDE
+
+        if x < w["xmin"]:
+            code |= self.LEFT
+        elif x > w["xmax"]:
+            code |= self.RIGHT
+        if y < w["ymin"]:
+            code |= self.BOTTOM
+        elif y > w["ymax"]:
+            code |= self.TOP
+
+        return code
+
+    def clip_cohen_sutherland(self, x1, y1, x2, y2):
+        w = self.window
+
+        code1 = self.compute_code(x1, y1)
+        code2 = self.compute_code(x2, y2)
+
+        while True:
+            if code1 == 0 and code2 == 0:
+                return x1, y1, x2, y2
+
+            if code1 & code2:
+                return None
+
+            code_out = code1 if code1 != 0 else code2
+
+            if code_out & self.TOP:
+                x = x1 + (x2 - x1) * (w["ymax"] - y1) / (y2 - y1)
+                y = w["ymax"]
+            elif code_out & self.BOTTOM:
+                x = x1 + (x2 - x1) * (w["ymin"] - y1) / (y2 - y1)
+                y = w["ymin"]
+            elif code_out & self.RIGHT:
+                y = y1 + (y2 - y1) * (w["xmax"] - x1) / (x2 - x1)
+                x = w["xmax"]
+            elif code_out & self.LEFT:
+                y = y1 + (y2 - y1) * (w["xmin"] - x1) / (x2 - x1)
+                x = w["xmin"]
+
+            if code_out == code1:
+                x1, y1 = x, y
+                code1 = self.compute_code(x1, y1)
+            else:
+                x2, y2 = x, y
+                code2 = self.compute_code(x2, y2)
+
+    def clip_liang_barsky(self, x1, y1, x2, y2):
+        w = self.window
+        dx = x2 - x1
+        dy = y2 - y1
+
+        p = [-dx, dx, -dy, dy]
+        q = [x1 - w["xmin"], w["xmax"] - x1,
+             y1 - w["ymin"], w["ymax"] - y1]
+
+        u1, u2 = 0, 1
+
+        for pi, qi in zip(p, q):
+            if pi == 0:
+                if qi < 0:
+                    return None
+            else:
+                t = -qi / pi
+                if pi < 0:
+                    u1 = max(u1, t)
+                else:
+                    u2 = min(u2, t)
+
+        if u1 > u2:
+            return None
+
+        return (
+            x1 + u1 * dx,
+            y1 + u1 * dy,
+            x1 + u2 * dx,
+            y1 + u2 * dy
+        )
+
+    def clip_polygon(self, pontos):
+        w = self.window
+
+        def inside(p, edge):
+            x, y = p
+            if edge == "left":
+                return x >= w["xmin"]
+            elif edge == "right":
+                return x <= w["xmax"]
+            elif edge == "bottom":
+                return y >= w["ymin"]
+            elif edge == "top":
+                return y <= w["ymax"]
+
+        def intersect(p1, p2, edge):
+            x1, y1 = p1
+            x2, y2 = p2
+
+            if edge == "left":
+                x = w["xmin"]
+                y = y1 + (y2 - y1) * (w["xmin"] - x1) / (x2 - x1)
+
+            elif edge == "right":
+                x = w["xmax"]
+                y = y1 + (y2 - y1) * (w["xmax"] - x1) / (x2 - x1)
+
+            elif edge == "bottom":
+                y = w["ymin"]
+                x = x1 + (x2 - x1) * (w["ymin"] - y1) / (y2 - y1)
+
+            elif edge == "top":
+                y = w["ymax"]
+                x = x1 + (x2 - x1) * (w["ymax"] - y1) / (y2 - y1)
+
+            return (x, y)
+
+        def clip_edge(pontos, edge):
+            novos = []
+
+            for i in range(len(pontos)):
+                P = pontos[i]
+                Q = pontos[(i + 1) % len(pontos)]
+
+                if inside(Q, edge):
+                    if not inside(P, edge):
+                        novos.append(intersect(P, Q, edge))
+                    novos.append(Q)
+                elif inside(P, edge):
+                    novos.append(intersect(P, Q, edge))
+
+            return novos
+
+        # aplica nos 4 lados
+        pontos = clip_edge(pontos, "left")
+        pontos = clip_edge(pontos, "right")
+        pontos = clip_edge(pontos, "bottom")
+        pontos = clip_edge(pontos, "top")
+
+        return pontos
+
+    def ponto_dentro_window(self, x, y):
+        w = self.window
+        return (w["xmin"] <= x <= w["xmax"] and
+                w["ymin"] <= y <= w["ymax"])
+
 class interfaceAddObj(tk.Toplevel):
     def __init__(self, parent, title, largura, altura):
         super().__init__(parent)
@@ -337,6 +727,7 @@ class interfaceAddObj(tk.Toplevel):
         tk.Radiobutton(self, text="Pt", variable=self.tipo_var, value="ponto").pack()
         tk.Radiobutton(self, text="Rt", variable=self.tipo_var, value="reta").pack()
         tk.Radiobutton(self, text="Wf", variable=self.tipo_var, value="wireframe").pack()
+        tk.Radiobutton(self, text="preenchido",variable=self.tipo_var, value="fill").pack()
 
         tk.Label(self, text="Pontos:").pack(pady=5)
 
@@ -359,7 +750,6 @@ class interfaceAddObj(tk.Toplevel):
         scroll.config(command=self.listbox_pontos.yview)
 
         tk.Button(self, text="Remover ponto", command=self.remover_ponto).pack(pady=5)
-
         tk.Button(self, text="Salvar", command=self.save_object).pack(pady=10)
 
     def escolher_cor(self):
@@ -405,9 +795,10 @@ class interfaceAddObj(tk.Toplevel):
         nome = self.entry_nome.get()
         tipo = self.tipo_var.get()
         pontos = self.pontos
-        if (tipo == "wireframe" and len(self.pontos) < 3) or (tipo == "reta" and len(self.pontos) != 2) or (tipo == "ponto" and len(self.pontos) != 1):
+        if (tipo == "wireframe" and len(self.pontos) < 3) or (tipo == "reta" and len(self.pontos) != 2) or (tipo == "ponto" and len(self.pontos) != 1) or (tipo == "fill" and len(self.pontos) < 3):
             messagebox.showerror("Erro", "O tipo do objeto não corresponde ao número de pontos")
             return
+
         novo_objeto = objeto(nome, tipo, pontos, self.cor)
         self.master.display_file.append(novo_objeto)
         self.master.atualizar_listbox()
@@ -579,6 +970,41 @@ class objeto:
         self.tipo = tipo
         self.pontos = pontos
         self.cor = cor
+
+class DescritorOBJ:
+    def __init__(self):
+        self.vertex_offset = 0
+    
+    def descrever_objeto(self, obj):
+        linhas = []
+
+        linhas.append(f"# tipo: {obj.tipo}")
+        linhas.append(f"# cor: {obj.cor}")
+        linhas.append(f"o {obj.nome}")
+
+        indices = []
+
+        # vértices
+        for (x, y) in obj.pontos:
+            linhas.append(f"v {x} {y} 0")
+            self.vertex_offset += 1
+            indices.append(self.vertex_offset)
+
+        # arestas
+        if obj.tipo == "reta":
+            linhas.append(f"l {indices[0]} {indices[1]}")
+
+        elif obj.tipo == "wireframe":
+            n = len(indices)
+            for i in range(n):
+                a = indices[i]
+                b = indices[(i + 1) % n]
+                linhas.append(f"l {a} {b}")
+
+        elif obj.tipo == "ponto":
+            linhas.append(f"l {indices[0]} {indices[0]}")
+
+        return "\n".join(linhas)
 
 app = interfaceMain("sgi", 800, 600)
 app.mainloop()
