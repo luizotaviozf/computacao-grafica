@@ -1,4 +1,4 @@
-Para inicializar o SGI exetuce main.py
+Para inicializar o SGI execute main.py
 
 Problemas e bugs a serem consertados:
 
